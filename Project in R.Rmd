@@ -1,0 +1,364 @@
+---
+title: "Project in R"
+author: "Lucas Oke"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document:
+    keep_tex: yes
+runtime: shiny
+---
+
+```{r include=FALSE}
+# Required libraries
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(shiny)
+library(plotrix)
+library(corrplot)
+library(randomcoloR)
+library(vcd)
+library(tinytex)
+library(DT)
+library(knitr)
+library(moments)
+library(latticeExtra)
+library(lestat)
+library(echarts4r)
+library(GGally)
+library(caret)
+library(shinydashboard)
+```
+
+Find out data [here](https://www.kaggle.com/fedesoriano/heart-failure-prediction).
+
+Lets import those interesting data...
+
+```{r include=FALSE}
+cvadata = read_excel("C:/Users/hp/Dropbox (Ancien)/PC/Desktop/Project in R/CVADatabase.xlsx")
+#Set HeartDisease as character
+cvadata$HeartDisease <- as.factor(cvadata$HeartDisease)
+#Set Oldpeak as numeric
+cvadata$Oldpeak <- as.numeric(cvadata$Oldpeak)
+attach(cvadata)
+```
+
+## DESCRIPTIVE STATISTICS
+
+### Parameters Calculation
+
+Let's compute the summary...
+
+```{r}
+Summary = summary(cvadata)
+kable(Summary)
+```
+
+### Graphical Representation
+
+#### Age
+
+Trying visualization with e_chart...
+
+```{r}
+cvadata |>
+  e_charts() |>
+  e_histogram(Age, name = "Age", breaks = 10) |>
+  e_density(Age, areaStyle = list(opacity = .4), smooth = TRUE, name = "Density", y_index = 1) |>
+  e_tooltip(trigger = "axis")
+```
+
+#### Sex
+
+```{r}
+par(mfrow =c(1,2))
+pie(table(Sex),
+      col = hcl.colors(length(table(Sex)), "Spectral"),
+      labels = c(0,1),
+      main = paste("Sex Piechart")
+      )
+barplot(table(Sex), col = hcl.colors(length(table(Sex)), "Spectral"),
+        main = paste("Sex Barplot"))
+```
+
+#### ChestPainType
+
+```{r}
+par(mfrow =c(1,2))
+pie(table(ChestPainType),
+      col = hcl.colors(length(table(ChestPainType)), "Spectral"),
+      labels = c("ASY","NAP","ATA","TA" ),
+      main = paste("ChestPainType Piechart")
+      )
+barplot(table(ChestPainType), col = hcl.colors(length(table(ChestPainType)), "Spectral"),
+        main = paste("ChestPainType Barplot"))
+```
+
+#### RestingBP
+
+```{r}
+cvadata |>
+  e_charts() |>
+  e_histogram(RestingBP, name = "RestingBP", breaks = 10) |>
+  e_density(RestingBP, areaStyle = list(opacity = .4), smooth = TRUE, name = "Density", y_index = 1) |>
+  e_tooltip(trigger = "axis")
+```
+
+#### Cholesterol
+
+```{r}
+ggplot(cvadata, aes(x=Cholesterol))+
+  geom_histogram(aes(y=..density..), color="black", fill="white", binwidth=10)+
+  geom_density(alpha=.2, fill = "#FF6666")
+```
+
+#### FastingBS
+
+```{r}
+par(mfrow =c(1,2))
+pie(table(FastingBS),
+      col = hcl.colors(length(table(FastingBS)), "Spectral"),
+      labels = c(0,1),
+      main = paste("FastingBS Piechart")
+      )
+barplot(table(FastingBS), col = hcl.colors(length(table(FastingBS)), "Spectral"),
+        main = paste("FastingBS Barplot"))
+```
+
+#### RestingECG
+
+```{r}
+par(mfrow =c(1,2))
+pie(table(RestingECG),
+      col = hcl.colors(length(table(RestingECG)), "Spectral"),
+      labels = c("LHV","Normal","ST"),
+      main = paste("RestingECG Piechart")
+      )
+barplot(table(RestingECG), col = hcl.colors(length(table(RestingECG)), "Spectral"),
+        main = paste("RestingECG Barplot"))
+```
+
+#### MaxHR
+
+```{r}
+ggplot(cvadata, aes(x=MaxHR))+
+  geom_histogram(aes(y=..density..), color="black", fill="white", binwidth = 10)+
+  geom_density(alpha=.2, fill = "#FF6666")
+```
+
+#### ExerciseAngina
+
+```{r}
+par(mfrow =c(1,2))
+pie(table(ExerciseAngina),
+      col = hcl.colors(length(table(ExerciseAngina)), "Spectral"),
+      labels = c("Y","N"),
+      main = paste("ExerciseAngina Piechart")
+      )
+barplot(table(ExerciseAngina), col = hcl.colors(length(table(ExerciseAngina)), "Spectral"),
+        main = paste("ExerciseAngina Barplot"))
+```
+
+#### Oldpeak
+
+```{r}
+ggplot(cvadata, aes(x=Oldpeak))+
+  geom_histogram(aes(y=..density..), color="black", fill="white")+
+  geom_density(alpha=.2, fill = "#FF6666")
+```
+
+#### ST_Slope
+
+```{r}
+cvadata%>%
+ggplot(mapping =  aes(x= ST_Slope))+
+  geom_bar()
+```
+
+#### HeartDisease
+
+```{r}
+cvadata%>%
+ggplot(mapping =  aes(x= HeartDisease))+
+  geom_bar()
+```
+
+## Association of 2 variables
+
+```{r}
+inputPanel(
+  selectInput("variable1", "Numeric Variable", choices = c("Age", "RestingBP",
+                                                   "Cholesterol", "FastingBS", "MaxHR",
+                                                   "Oldpeak","HeartDisease" )),
+  selectInput("variable2", "Variable", choices = names(cvadata))
+)
+ 
+renderPlot({
+  boxplot(get(input$variable1) ~ get(input$variable2), data = cvadata, col = randomColor())
+})
+```
+
+Checking correlation in between the parameters...
+
+```{r}
+cvadata <- cvadata %>%
+  mutate_if(is.character, as.factor)
+cvadata_numeric = data.frame(Age,RestingBP,Cholesterol,MaxHR,Oldpeak)
+acorr = cor(cvadata_numeric)
+corrplot(acorr, type="lower", tl.col="black", tl.srt=45)
+```
+
+```{r eval=FALSE, include=FALSE}
+ggpairs(cvadata, title = "correlogram with ggpairs()")
+```
+
+## Logistic Regression
+
+```{r}
+modele_reg <- glm(HeartDisease~ Age + Sex + ChestPainType + RestingBP + Cholesterol + FastingBS + 
+                    RestingECG + MaxHR + ExerciseAngina + Oldpeak + ST_Slope,
+                  data = cvadata, family = binomial())
+summary(modele_reg)
+```
+
+## Machine Learning model
+
+```{r}
+#Building a traing model:
+## Random Forest
+set.seed(10000)
+fitControl = trainControl(method = "cv", number = 10)
+
+ml_mod = train(HeartDisease~.,
+                 data = cvadata,
+                 method = "rf",
+                 trControl = fitControl,
+                 verbose = T)
+
+#Save model in RDS:
+saveRDS(ml_mod,"ML_mod.rds")
+```
+
+Let's shine a bit
+
+```{r}
+ui <- dashboardPage(
+  dashboardHeader(title = "CVA Prediction"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      id = "tabs",
+      menuItem("Correlation", tabName = "corr"),
+      menuItem("Regression", tabName = "reg"),
+      menuItem("Predict CVA occurence", tabName = "Predict_CVA_occurence"))
+      
+  ),
+  
+  dashboardBody(
+    tabItems(
+      tabItem("Predict_CVA_occurence",
+      fluidRow(box(
+      sliderInput("Age", label = "Age?", value = 28,
+                                min = min(Age), max = max(Age)),
+    sliderInput("RestingBP", label = "RestingBP", value = 0,
+                                  min = min(RestingBP),
+                                  max = max(RestingBP)),
+    sliderInput("Cholesterol", label = "Cholesterol", value = 0,
+                                  min = min(Cholesterol),
+                                  max = max(Cholesterol)),
+    sliderInput("MaxHR", label = "MaxHR", value = 60,
+                                  min = min(MaxHR),
+                                  max = max(MaxHR)),
+    sliderInput("Oldpeak",label = "Oldpeak", value = 0,
+                                  min = min(Oldpeak),
+                                  max = max(Oldpeak))
+    ),
+    box(
+        selectizeInput("Sex", label = "Sex", Sex),
+    selectInput("ChestPainType", label = "ChestPainType", ChestPainType),
+    numericInput("FastingBS", label = "FastingBS", value = 0,
+                                   min = min(FastingBS),
+                                   max = max(FastingBS)),
+    selectInput("RestingECG", label = "RestingECG", RestingECG),
+    selectInput("ExerciseAngina", label = "ExerciseAngina", ExerciseAngina),
+    selectInput("ST_Slope", label = "ST_Slope", ST_Slope)
+              )       
+             ),
+    fluidRow(valueBoxOutput("Occurence"))
+    ),
+    tabItem("reg", verbatimTextOutput('regression')),
+    tabItem("corr",
+      selectInput("variable1", "Numeric Variable", choices = c("Age", "RestingBP",
+                                                   "Cholesterol", "FastingBS", "MaxHR",
+                                                   "Oldpeak","HeartDisease" )),
+      selectInput("variable2", "Variable", choices = names(cvadata)),
+      plotOutput("corre")
+    )
+    )
+    )
+)
+
+server <- function(input, output){
+  
+  prediction <- reactive({
+    predict(
+      ml_mod,
+      data.frame("Age" = input$Age,
+                 "Sex" = input$Sex,
+                 "ChestPainType" = input$ChestPainType,
+                 "RestingBP" = input$RestingBP,
+                 "Cholesterol" = input$Cholesterol,
+                 "FastingBS" = input$FastingBS,
+                 "RestingECG"	= input$RestingECG,
+                 "MaxHR"	= input$MaxHR,
+                 "ExerciseAngina"	= input$ExerciseAngina,
+                 "Oldpeak"	= input$Oldpeak,
+                 "ST_Slope"	= input$ST_Slope
+      ),
+      type = "raw"
+    )
+  })
+  prediction_label <- reactive({
+    ifelse(prediction() == 0, "No AVC", "AVC")
+  })
+  prediction_prob <- reactive({
+    predict(
+      ml_mod,
+      data.frame("Age" = input$Age,
+                 "Sex" = input$Sex,
+                 "ChestPainType" = input$ChestPainType,
+                 "RestingBP" = input$RestingBP,
+                 "Cholesterol" = input$Cholesterol,
+                 "FastingBS" = input$FastingBS,
+                 "RestingECG"	= input$RestingECG,
+                 "MaxHR"	= input$MaxHR,
+                 "ExerciseAngina"	= input$ExerciseAngina,
+                 "Oldpeak"	= input$Oldpeak,
+                 "ST_Slope"	= input$ST_Slope
+      ),
+      type = "prob"
+    )
+  })   
+  prediction_color <- reactive({
+    ifelse(prediction() == "0", "green", "red")
+  })
+  output$Occurence <- renderValueBox({
+    valueBox( 
+      paste0(round(100 * prediction_prob()$`1`, 0), "%"),
+      prediction_label(),
+      color = prediction_color()
+    )
+  })
+  output$corre = renderPlot({
+    boxplot(get(input$variable1) ~ get(input$variable2), data = cvadata, col = randomColor())
+  })
+  output$regression <- renderPrint({
+    summary(modele_reg)
+  })
+}
+shinyApp(ui, server)
+```
+
+## Project finished
