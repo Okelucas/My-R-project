@@ -1,7 +1,6 @@
 ---
 title: "Project in R"
 author: "Lucas Oke"
-date: "`r Sys.Date()`"
 output:
   html_document:
     toc: true
@@ -9,8 +8,7 @@ output:
   word_document: default
   pdf_document:
     keep_tex: yes
-editor_options: 
-  chunk_output_type: inline
+runtime: shiny
 ---
 
 ```{r include=FALSE}
@@ -20,7 +18,7 @@ library(ggplot2)
 library(dplyr)
 library(shiny)
 library(plotrix)
-library(corrplot) 
+library(corrplot)
 library(randomcoloR)
 library(vcd)
 library(tinytex)
@@ -190,6 +188,19 @@ ggplot(mapping =  aes(x= HeartDisease))+
 
 ## Association of 2 variables
 
+```{r}
+inputPanel(
+  selectInput("variable1", "Numeric Variable", choices = c("Age", "RestingBP",
+                                                   "Cholesterol", "FastingBS", "MaxHR",
+                                                   "Oldpeak","HeartDisease" )),
+  selectInput("variable2", "Variable", choices = names(cvadata))
+)
+ 
+renderPlot({
+  boxplot(get(input$variable1) ~ get(input$variable2), data = cvadata, col = randomColor())
+})
+```
+
 Checking correlation in between the parameters...
 
 ```{r}
@@ -212,3 +223,143 @@ modele_reg <- glm(HeartDisease~ Age + Sex + ChestPainType + RestingBP + Choleste
                   data = cvadata, family = binomial())
 summary(modele_reg)
 ```
+
+## Machine Learning model
+
+```{r}
+#Building a traing model:
+## Random Forest
+set.seed(10000)
+fitControl = trainControl(method = "cv", number = 10)
+
+ml_mod = train(HeartDisease~.,
+                 data = cvadata,
+                 method = "rf",
+                 trControl = fitControl,
+                 verbose = T)
+
+#Save model in RDS:
+saveRDS(ml_mod,"ML_mod.rds")
+```
+
+Let's shine a bit
+
+```{r}
+ui <- dashboardPage(
+  dashboardHeader(title = "CVA Prediction"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      id = "tabs",
+      menuItem("Correlation", tabName = "corr"),
+      menuItem("Regression", tabName = "reg"),
+      menuItem("Predict CVA occurence", tabName = "Predict_CVA_occurence"))
+      
+  ),
+  
+  dashboardBody(
+    tabItems(
+      tabItem("Predict_CVA_occurence",
+      fluidRow(box(
+      sliderInput("Age", label = "Age?", value = 28,
+                                min = min(Age), max = max(Age)),
+    sliderInput("RestingBP", label = "RestingBP", value = 0,
+                                  min = min(RestingBP),
+                                  max = max(RestingBP)),
+    sliderInput("Cholesterol", label = "Cholesterol", value = 0,
+                                  min = min(Cholesterol),
+                                  max = max(Cholesterol)),
+    sliderInput("MaxHR", label = "MaxHR", value = 60,
+                                  min = min(MaxHR),
+                                  max = max(MaxHR)),
+    sliderInput("Oldpeak",label = "Oldpeak", value = 0,
+                                  min = min(Oldpeak),
+                                  max = max(Oldpeak))
+    ),
+    box(
+        selectizeInput("Sex", label = "Sex", Sex),
+    selectInput("ChestPainType", label = "ChestPainType", ChestPainType),
+    numericInput("FastingBS", label = "FastingBS", value = 0,
+                                   min = min(FastingBS),
+                                   max = max(FastingBS)),
+    selectInput("RestingECG", label = "RestingECG", RestingECG),
+    selectInput("ExerciseAngina", label = "ExerciseAngina", ExerciseAngina),
+    selectInput("ST_Slope", label = "ST_Slope", ST_Slope)
+              )       
+             ),
+    fluidRow(valueBoxOutput("Occurence"))
+    ),
+    tabItem("reg", verbatimTextOutput('regression')),
+    tabItem("corr",
+      selectInput("variable1", "Numeric Variable", choices = c("Age", "RestingBP",
+                                                   "Cholesterol", "FastingBS", "MaxHR",
+                                                   "Oldpeak","HeartDisease" )),
+      selectInput("variable2", "Variable", choices = names(cvadata)),
+      plotOutput("corre")
+    )
+    )
+    )
+)
+
+server <- function(input, output){
+  
+  prediction <- reactive({
+    predict(
+      ml_mod,
+      data.frame("Age" = input$Age,
+                 "Sex" = input$Sex,
+                 "ChestPainType" = input$ChestPainType,
+                 "RestingBP" = input$RestingBP,
+                 "Cholesterol" = input$Cholesterol,
+                 "FastingBS" = input$FastingBS,
+                 "RestingECG"	= input$RestingECG,
+                 "MaxHR"	= input$MaxHR,
+                 "ExerciseAngina"	= input$ExerciseAngina,
+                 "Oldpeak"	= input$Oldpeak,
+                 "ST_Slope"	= input$ST_Slope
+      ),
+      type = "raw"
+    )
+  })
+  prediction_label <- reactive({
+    ifelse(prediction() == 0, "No AVC", "AVC")
+  })
+  prediction_prob <- reactive({
+    predict(
+      ml_mod,
+      data.frame("Age" = input$Age,
+                 "Sex" = input$Sex,
+                 "ChestPainType" = input$ChestPainType,
+                 "RestingBP" = input$RestingBP,
+                 "Cholesterol" = input$Cholesterol,
+                 "FastingBS" = input$FastingBS,
+                 "RestingECG"	= input$RestingECG,
+                 "MaxHR"	= input$MaxHR,
+                 "ExerciseAngina"	= input$ExerciseAngina,
+                 "Oldpeak"	= input$Oldpeak,
+                 "ST_Slope"	= input$ST_Slope
+      ),
+      type = "prob"
+    )
+  })   
+  prediction_color <- reactive({
+    ifelse(prediction() == "0", "green", "red")
+  })
+  output$Occurence <- renderValueBox({
+    valueBox( 
+      paste0(round(100 * prediction_prob()$`1`, 0), "%"),
+      prediction_label(),
+      color = prediction_color()
+    )
+  })
+  output$corre = renderPlot({
+    boxplot(get(input$variable1) ~ get(input$variable2), data = cvadata, col = randomColor())
+  })
+  output$regression <- renderPrint({
+    summary(modele_reg)
+  })
+}
+shinyApp(ui, server)
+```
+
+## Project finished
